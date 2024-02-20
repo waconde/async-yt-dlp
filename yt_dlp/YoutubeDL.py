@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import contextlib
 import copy
@@ -753,7 +754,7 @@ class YoutubeDL:
         self.format_selector = (
             self.params.get('format') if self.params.get('format') in (None, '-')
             else self.params['format'] if callable(self.params['format'])
-            else self.build_format_selector(self.params['format']))
+            else asyncio.run(self.build_format_selector(self.params['format'])))
 
         hooks = {
             'post_hooks': self.add_post_hook,
@@ -2160,7 +2161,7 @@ class YoutubeDL:
             else 'bestvideo*+bestaudio/best' if not compat
             else 'bestvideo+bestaudio/best')
 
-    def build_format_selector(self, format_spec):
+    async def build_format_selector(self, format_spec):
         def syntax_error(note, start):
             message = (
                 'Invalid format specification: '
@@ -2512,7 +2513,7 @@ class YoutubeDL:
                 self.counter -= 1
 
         parsed_selector = _parse_format_selection(iter(TokenIterator(tokens)))
-        return _build_selector_function(parsed_selector)
+        return await _build_selector_function(parsed_selector)
 
     def _calc_headers(self, info_dict, load_cookies=False):
         res = HTTPHeaderDict(self.params['http_headers'], info_dict.get('http_headers'))

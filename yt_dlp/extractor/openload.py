@@ -160,7 +160,7 @@ class PhantomJSwrapper:
                 cookie['expire_time'] = cookie['expiry']
             self.extractor._set_cookie(**cookie)
 
-    def get(self, url, html=None, video_id=None, note=None, note2='Executing JS on webpage', headers={}, jscode='saveAndExit();'):
+    async def get(self, url, html=None, video_id=None, note=None, note2='Executing JS on webpage', headers={}, jscode='saveAndExit();'):
         """
         Downloads webpage (if needed) and executes JS
 
@@ -199,7 +199,7 @@ class PhantomJSwrapper:
         if 'saveAndExit();' not in jscode:
             raise ExtractorError('`saveAndExit();` not found in `jscode`')
         if not html:
-            html = self.extractor._download_webpage(url, video_id, note=note, headers=headers)
+            html = await self.extractor._download_webpage(url, video_id, note=note, headers=headers)
         with open(self._TMP_FILES['html'].name, 'wb') as f:
             f.write(html.encode('utf-8'))
 

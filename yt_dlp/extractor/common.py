@@ -568,6 +568,17 @@ class InfoExtractor:
         self._printed_messages = set()
         self.set_downloader(downloader)
 
+        self._download_xml_handle, self._download_xml = asyncio.run(self.__create_download_methods(
+            'xml', '_parse_xml', 'Downloading XML', 'Unable to download XML',
+            'xml as an xml.etree.ElementTree.Element'))
+        self._download_json_handle, self._download_json = asyncio.run(self.__create_download_methods(
+            'json', '_parse_json', 'Downloading JSON metadata', 'Unable to download JSON metadata',
+            'JSON object as a dict'))
+        self._download_socket_json_handle, self._download_socket_json = asyncio.run(self.__create_download_methods(
+            'socket_json', '_parse_socket_response_as_json', 'Polling socket', 'Unable to poll socket',
+            'JSON object as a dict'))
+        self.__download_webpage = asyncio.run(self.__create_download_methods('webpage', None, None, None, 'data of the page as a string'))[1]
+
     @classmethod
     def _match_valid_url(cls, url):
         if cls._VALID_URL is False:
@@ -780,7 +791,7 @@ class InfoExtractor:
         """Real initialization process. Redefine in subclasses."""
         pass
 
-    def _real_extract(self, url):
+    async def _real_extract(self, url):
         """Real extraction process. Redefine in subclasses."""
         raise NotImplementedError('This method must be implemented by subclasses')
 
@@ -1021,7 +1032,7 @@ class InfoExtractor:
     def _parse_socket_response_as_json(self, data, *args, **kwargs):
         return self._parse_json(data[data.find('{'):data.rfind('}') + 1], *args, **kwargs)
 
-    async def __create_download_methods(name, parser, note, errnote, return_value):
+    async def __create_download_methods(self, name, parser, note, errnote, return_value):
 
         async def parse(ie, content, *args, errnote=errnote, **kwargs):
             if parser is None:
@@ -1031,7 +1042,7 @@ class InfoExtractor:
             # parser is fetched by name so subclasses can override it
             return getattr(ie, parser)(content, *args, **kwargs)
 
-        async def download_handle(self, url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
+        async def download_handle(url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
                             fatal=True, encoding=None, data=None, headers={}, query={}, expected_status=None):
             res = await self._download_webpage_handle(
                 url_or_request, video_id, note=note, errnote=errnote, fatal=fatal, encoding=encoding,
@@ -1041,7 +1052,7 @@ class InfoExtractor:
             content, urlh = res
             return await parse(self, content, video_id, transform_source=transform_source, fatal=fatal, errnote=errnote), urlh
 
-        async def download_content(self, url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
+        async def download_content(url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
                              fatal=True, encoding=None, data=None, headers={}, query={}, expected_status=None):
             if self.get_param('load_pages'):
                 url_or_request = self._create_request(url_or_request, data, headers, query)
@@ -1084,14 +1095,6 @@ class InfoExtractor:
         impersonate(download_handle, f'_download_{name}_handle', f'({return_value}, URL handle)')
         impersonate(download_content, f'_download_{name}', f'{return_value}')
         return download_handle, download_content
-
-    _download_xml_handle, _download_xml = asyncio.run(__create_download_methods(
-        'xml', '_parse_xml', 'Downloading XML', 'Unable to download XML', 'xml as an xml.etree.ElementTree.Element'))
-    _download_json_handle, _download_json = asyncio.run(__create_download_methods(
-        'json', '_parse_json', 'Downloading JSON metadata', 'Unable to download JSON metadata', 'JSON object as a dict'))
-    _download_socket_json_handle, _download_socket_json = asyncio.run(__create_download_methods(
-        'socket_json', '_parse_socket_response_as_json', 'Polling socket', 'Unable to poll socket', 'JSON object as a dict'))
-    __download_webpage = asyncio.run(__create_download_methods('webpage', None, None, None, 'data of the page as a string'))[1]
 
     async def _download_webpage(
             self, url_or_request, video_id, note=None, errnote=None,
@@ -1975,7 +1978,7 @@ class InfoExtractor:
         m3u8_doc, urlh = res
         m3u8_url = urlh.url
 
-        return self._parse_m3u8_formats_and_subtitles(
+        return await self._parse_m3u8_formats_and_subtitles(
             m3u8_doc, m3u8_url, ext=ext, entry_protocol=entry_protocol,
             preference=preference, quality=quality, m3u8_id=m3u8_id,
             note=note, errnote=errnote, fatal=fatal, live=live, data=data,
@@ -2005,7 +2008,7 @@ class InfoExtractor:
                 return range(1 + sum(line.startswith('#EXT-X-DISCONTINUITY') for line in m3u8_doc.splitlines()))
 
         else:
-            def _extract_m3u8_playlist_indices(*args, **kwargs):
+            async def _extract_m3u8_playlist_indices(*args, **kwargs):
                 return [None]
 
         # References:
@@ -2113,7 +2116,7 @@ class InfoExtractor:
         # precede EXT-X-MEDIA tags in HLS manifest such as [3].
         for line in m3u8_doc.splitlines():
             if line.startswith('#EXT-X-MEDIA:'):
-                extract_media(line)
+                await extract_media(line)
 
         for line in m3u8_doc.splitlines():
             if line.startswith('#EXT-X-STREAM-INF:'):
@@ -2200,10 +2203,10 @@ class InfoExtractor:
                 last_stream_inf = {}
         return formats, subtitles
 
-    def _extract_m3u8_vod_duration(
+    async def _extract_m3u8_vod_duration(
             self, m3u8_vod_url, video_id, note=None, errnote=None, data=None, headers={}, query={}):
 
-        m3u8_vod = self._download_webpage(
+        m3u8_vod = await self._download_webpage(
             m3u8_vod_url, video_id,
             note='Downloading m3u8 VOD manifest' if note is None else note,
             errnote='Failed to download VOD manifest' if errnote is None else errnote,
@@ -2385,7 +2388,7 @@ class InfoExtractor:
             src_url = src_url.strip()
 
             if proto == 'm3u8' or src_ext == 'm3u8':
-                m3u8_formats, m3u8_subs = self._extract_m3u8_formats_and_subtitles(
+                m3u8_formats, m3u8_subs = await self._extract_m3u8_formats_and_subtitles(
                     src_url, video_id, ext or 'mp4', m3u8_id='hls', fatal=False)
                 self._merge_subtitles(m3u8_subs, target=subtitles)
                 if len(m3u8_formats) == 1:
@@ -2406,7 +2409,7 @@ class InfoExtractor:
                     }
                 f4m_url += '&' if '?' in f4m_url else '?'
                 f4m_url += urllib.parse.urlencode(f4m_params)
-                formats.extend(self._extract_f4m_formats(f4m_url, video_id, f4m_id='hds', fatal=False))
+                formats.extend(await self._extract_f4m_formats(f4m_url, video_id, f4m_id='hds', fatal=False))
             elif src_ext == 'mpd':
                 mpd_formats, mpd_subs = self._extract_mpd_formats_and_subtitles(
                     src_url, video_id, mpd_id='dash', fatal=False)
@@ -3159,13 +3162,13 @@ class InfoExtractor:
                 entries.append(media_info)
         return entries
 
-    def _extract_akamai_formats(self, *args, **kwargs):
-        fmts, subs = self._extract_akamai_formats_and_subtitles(*args, **kwargs)
+    async def _extract_akamai_formats(self, *args, **kwargs):
+        fmts, subs = await self._extract_akamai_formats_and_subtitles(*args, **kwargs)
         if subs:
             self._report_ignoring_subs('akamai')
         return fmts
 
-    def _extract_akamai_formats_and_subtitles(self, manifest_url, video_id, hosts={}):
+    async def _extract_akamai_formats_and_subtitles(self, manifest_url, video_id, hosts={}):
         signed = 'hdnea=' in manifest_url
         if not signed:
             # https://learn.akamai.com/en-us/webhelp/media-services-on-demand/stream-packaging-user-guide/GUID-BE6C0F73-1E06-483B-B0EA-57984B91B7F9.html
@@ -3183,7 +3186,7 @@ class InfoExtractor:
             f4m_url = re.sub(r'(https?://)[^/]+', r'\1' + hds_host, f4m_url)
         if 'hdcore=' not in f4m_url:
             f4m_url += ('&' if '?' in f4m_url else '?') + hdcore_sign
-        f4m_formats = self._extract_f4m_formats(
+        f4m_formats = await self._extract_f4m_formats(
             f4m_url, video_id, f4m_id='hds', fatal=False)
         for entry in f4m_formats:
             entry.update({'extra_param_to_segment_url': hdcore_sign})
@@ -3193,7 +3196,7 @@ class InfoExtractor:
         hls_host = hosts.get('hls')
         if hls_host:
             m3u8_url = re.sub(r'(https?://)[^/]+', r'\1' + hls_host, m3u8_url)
-        m3u8_formats, m3u8_subtitles = self._extract_m3u8_formats_and_subtitles(
+        m3u8_formats, m3u8_subtitles = await self._extract_m3u8_formats_and_subtitles(
             m3u8_url, video_id, 'mp4', 'm3u8_native',
             m3u8_id='hls', fatal=False)
         formats.extend(m3u8_formats)
@@ -3223,7 +3226,7 @@ class InfoExtractor:
 
         return formats, subtitles
 
-    def _extract_wowza_formats(self, url, video_id, m3u8_entry_protocol='m3u8_native', skip_protocols=[]):
+    async def _extract_wowza_formats(self, url, video_id, m3u8_entry_protocol='m3u8_native', skip_protocols=[]):
         query = urllib.parse.urlparse(url).query
         url = re.sub(r'/(?:manifest|playlist|jwplayer)\.(?:m3u8|f4m|mpd|smil)', '', url)
         mobj = re.search(
@@ -3239,11 +3242,11 @@ class InfoExtractor:
             return m_url
 
         if 'm3u8' not in skip_protocols:
-            formats.extend(self._extract_m3u8_formats(
+            formats.extend(await self._extract_m3u8_formats(
                 manifest_url('playlist.m3u8'), video_id, 'mp4',
                 m3u8_entry_protocol, m3u8_id='hls', fatal=False))
         if 'f4m' not in skip_protocols:
-            formats.extend(self._extract_f4m_formats(
+            formats.extend(await self._extract_f4m_formats(
                 manifest_url('manifest.f4m'),
                 video_id, f4m_id='hds', fatal=False))
         if 'dash' not in skip_protocols:
@@ -3591,10 +3594,10 @@ class InfoExtractor:
     class CommentsDisabled(Exception):
         """Raise in _get_comments if comments are disabled for the video"""
 
-    def extract_comments(self, *args, **kwargs):
+    async def extract_comments(self, *args, **kwargs):
         if not self.get_param('getcomments'):
             return None
-        generator = self._get_comments(*args, **kwargs)
+        generator = await self._get_comments(*args, **kwargs)
 
         def extractor():
             comments = []
@@ -3620,7 +3623,7 @@ class InfoExtractor:
             }
         return extractor
 
-    def _get_comments(self, *args, **kwargs):
+    async def _get_comments(self, *args, **kwargs):
         raise NotImplementedError('This method must be implemented by subclasses')
 
     @staticmethod
@@ -3656,13 +3659,13 @@ class InfoExtractor:
         """Whether cookies have been passed to YoutubeDL"""
         return self.get_param('cookiefile') is not None or self.get_param('cookiesfrombrowser') is not None
 
-    def mark_watched(self, *args, **kwargs):
+    async def mark_watched(self, *args, **kwargs):
         if not self.get_param('mark_watched', False):
             return
         if self.supports_login() and self._get_login_info()[0] is not None or self._cookies_passed:
-            self._mark_watched(*args, **kwargs)
+            await self._mark_watched(*args, **kwargs)
 
-    def _mark_watched(self, *args, **kwargs):
+    async def _mark_watched(self, *args, **kwargs):
         raise NotImplementedError('This method must be implemented by subclasses')
 
     def geo_verification_headers(self):

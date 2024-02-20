@@ -2176,7 +2176,7 @@ class GenericIE(InfoExtractor):
 
         self._downloader.write_debug(f'Identified {num} {name}{format_field(note, None, "; %s")}')
 
-    def _extra_manifest_info(self, info, manifest_url):
+    async def _extra_manifest_info(self, info, manifest_url):
         fragment_query = self._configuration_arg('fragment_query', [None], casesense=True)[0]
         if fragment_query is not None:
             info['extra_param_to_segment_url'] = (
@@ -2205,7 +2205,7 @@ class GenericIE(InfoExtractor):
                 info['live_status'] = 'not_live' if is_live == 'false' else 'is_live'
                 return
             headers = m3u8_format.get('http_headers') or info.get('http_headers')
-            duration = self._extract_m3u8_vod_duration(
+            duration = await self._extract_m3u8_vod_duration(
                 m3u8_format['url'], info.get('id'), note='Checking m3u8 live status',
                 errnote='Failed to download m3u8 media playlist', headers=headers)
             if not duration:
@@ -2389,7 +2389,7 @@ class GenericIE(InfoExtractor):
         # to accept raw bytes and being able to download only a chunk.
         # It may probably better to solve this by checking Content-Type for application/octet-stream
         # after a HEAD request, but not sure if we can rely on this.
-        full_response = self._request_webpage(url, video_id, headers=filter_dict({
+        full_response = await self._request_webpage(url, video_id, headers=filter_dict({
             'Accept-Encoding': 'identity',
             'Referer': smuggled_data.get('referer'),
         }))
@@ -2417,11 +2417,11 @@ class GenericIE(InfoExtractor):
             ext = determine_ext(url, default_ext=None) or urlhandle_detect_ext(full_response)
             subtitles = {}
             if format_id.endswith('mpegurl') or ext == 'm3u8':
-                formats, subtitles = self._extract_m3u8_formats_and_subtitles(url, video_id, 'mp4', headers=headers)
+                formats, subtitles = await self._extract_m3u8_formats_and_subtitles(url, video_id, 'mp4', headers=headers)
             elif format_id.endswith('mpd') or format_id.endswith('dash+xml') or ext == 'mpd':
                 formats, subtitles = self._extract_mpd_formats_and_subtitles(url, video_id, headers=headers)
             elif format_id == 'f4m' or ext == 'f4m':
-                formats = self._extract_f4m_formats(url, video_id, headers=headers)
+                formats = await self._extract_f4m_formats(url, video_id, headers=headers)
             else:
                 formats = [{
                     'format_id': format_id,
@@ -2435,7 +2435,7 @@ class GenericIE(InfoExtractor):
                 'subtitles': subtitles,
                 'http_headers': headers or None,
             })
-            self._extra_manifest_info(info_dict, url)
+            await self._extra_manifest_info(info_dict, url)
             return info_dict
 
         if not self.get_param('test', False) and not is_intentional:
@@ -2447,8 +2447,8 @@ class GenericIE(InfoExtractor):
         # Is it an M3U playlist?
         if first_bytes.startswith(b'#EXTM3U'):
             self.report_detected('M3U playlist')
-            info_dict['formats'], info_dict['subtitles'] = self._extract_m3u8_formats_and_subtitles(url, video_id, 'mp4')
-            self._extra_manifest_info(info_dict, url)
+            info_dict['formats'], info_dict['subtitles'] = await self._extract_m3u8_formats_and_subtitles(url, video_id, 'mp4')
+            await self._extra_manifest_info(info_dict, url)
             return info_dict
 
         # Maybe it's a direct link to a video?
@@ -2466,7 +2466,7 @@ class GenericIE(InfoExtractor):
             full_response, url, video_id, prefix=first_bytes)
 
         if '<title>DPG Media Privacy Gate</title>' in webpage:
-            webpage = self._download_webpage(url, video_id)
+            webpage = await self._download_webpage(url, video_id)
 
         self.report_extraction(video_id)
 
@@ -2499,7 +2499,7 @@ class GenericIE(InfoExtractor):
                     doc,
                     mpd_base_url=full_response.url.rpartition('/')[0],
                     mpd_url=url)
-                self._extra_manifest_info(info_dict, url)
+                await self._extra_manifest_info(info_dict, url)
                 self.report_detected('DASH manifest')
                 return info_dict
             elif re.match(r'^{http://ns\.adobe\.com/f4m/[12]\.0}manifest$', doc.tag):
@@ -2523,14 +2523,14 @@ class GenericIE(InfoExtractor):
         })
 
         self._downloader.write_debug('Looking for embeds')
-        embeds = list(self._extract_embeds(original_url, webpage, urlh=full_response, info_dict=info_dict))
+        embeds = list(await self._extract_embeds(original_url, webpage, urlh=full_response, info_dict=info_dict))
         if len(embeds) == 1:
             return merge_dicts(embeds[0], info_dict)
         elif embeds:
             return self.playlist_result(embeds, **info_dict)
         raise UnsupportedError(url)
 
-    def _extract_embeds(self, url, webpage, *, urlh=None, info_dict={}):
+    async def _extract_embeds(self, url, webpage, *, urlh=None, info_dict={}):
         """Returns an iterator of video entries"""
         info_dict = types.MappingProxyType(info_dict)  # Prevents accidental mutation
         video_id = traverse_obj(info_dict, 'display_id', 'id') or self._generic_id(url)
@@ -2606,7 +2606,7 @@ class GenericIE(InfoExtractor):
                     formats.extend(fmts)
                     self._merge_subtitles(subs, target=subtitles)
                 elif src_type == 'application/x-mpegurl' or ext == 'm3u8':
-                    fmts, subs = self._extract_m3u8_formats_and_subtitles(
+                    fmts, subs = await self._extract_m3u8_formats_and_subtitles(
                         src, video_id, 'mp4', entry_protocol='m3u8_native',
                         m3u8_id='hls', fatal=False)
                     formats.extend(fmts)
@@ -2640,7 +2640,7 @@ class GenericIE(InfoExtractor):
                 self.report_detected('video.js embed')
                 info_dict = {'formats': formats, 'subtitles': subtitles}
                 if formats:
-                    self._extra_manifest_info(info_dict, src)
+                    await self._extra_manifest_info(info_dict, src)
                 return [info_dict]
 
         # Look for generic KVS player (before json-ld bc of some urls that break otherwise)
@@ -2815,13 +2815,13 @@ class GenericIE(InfoExtractor):
             elif ext == 'xspf':
                 return [self._extract_xspf_playlist(video_url, video_id)]
             elif ext == 'm3u8':
-                entry_info_dict['formats'], entry_info_dict['subtitles'] = self._extract_m3u8_formats_and_subtitles(video_url, video_id, ext='mp4', headers=headers)
-                self._extra_manifest_info(entry_info_dict, video_url)
+                entry_info_dict['formats'], entry_info_dict['subtitles'] = await self._extract_m3u8_formats_and_subtitles(video_url, video_id, ext='mp4', headers=headers)
+                await self._extra_manifest_info(entry_info_dict, video_url)
             elif ext == 'mpd':
                 entry_info_dict['formats'], entry_info_dict['subtitles'] = self._extract_mpd_formats_and_subtitles(video_url, video_id, headers=headers)
-                self._extra_manifest_info(entry_info_dict, video_url)
+                await self._extra_manifest_info(entry_info_dict, video_url)
             elif ext == 'f4m':
-                entry_info_dict['formats'] = self._extract_f4m_formats(video_url, video_id, headers=headers)
+                entry_info_dict['formats'] = await self._extract_f4m_formats(video_url, video_id, headers=headers)
             elif re.search(r'(?i)\.(?:ism|smil)/manifest', video_url) and video_url != url:
                 # Just matching .ism/manifest is not enough to be reliably sure
                 # whether it's actually an ISM manifest or some other streaming
