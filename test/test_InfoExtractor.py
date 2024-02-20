@@ -618,7 +618,7 @@ jwplayer("mediaplayer").setup({"abouttext":"Visit Indie DB","aboutlink":"http:\/
                 }]
             })
 
-    def test_parse_m3u8_formats(self):
+    async def test_parse_m3u8_formats(self):
         _TEST_CASES = [
             (
                 # https://github.com/ytdl-org/youtube-dl/issues/11995
@@ -1029,7 +1029,7 @@ jwplayer("mediaplayer").setup({"abouttext":"Visit Indie DB","aboutlink":"http:\/
 
         for m3u8_file, m3u8_url, expected_formats, expected_subs in _TEST_CASES:
             with open('./test/testdata/m3u8/%s.m3u8' % m3u8_file, encoding='utf-8') as f:
-                formats, subs = self.ie._parse_m3u8_formats_and_subtitles(
+                formats, subs = await self.ie._parse_m3u8_formats_and_subtitles(
                     f.read(), m3u8_url, ext='mp4')
                 self.ie._sort_formats(formats)
                 expect_value(self, formats, expected_formats, None)
@@ -1813,7 +1813,7 @@ jwplayer("mediaplayer").setup({"abouttext":"Visit Indie DB","aboutlink":"http:\/
                 expect_value(self, formats, expected_formats, None)
                 expect_value(self, subtitles, expected_subtitles, None)
 
-    def test_parse_f4m_formats(self):
+    async def test_parse_f4m_formats(self):
         _TEST_CASES = [
             (
                 # https://github.com/ytdl-org/youtube-dl/issues/14660
@@ -1833,7 +1833,7 @@ jwplayer("mediaplayer").setup({"abouttext":"Visit Indie DB","aboutlink":"http:\/
 
         for f4m_file, f4m_url, expected_formats in _TEST_CASES:
             with open('./test/testdata/f4m/%s.f4m' % f4m_file, encoding='utf-8') as f:
-                formats = self.ie._parse_f4m_formats(
+                formats = await self.ie._parse_f4m_formats(
                     compat_etree_fromstring(f.read().encode()),
                     f4m_url, None)
                 self.ie._sort_formats(formats)
@@ -1887,7 +1887,7 @@ jwplayer("mediaplayer").setup({"abouttext":"Visit Indie DB","aboutlink":"http:\/
                 for i in range(len(entries)):
                     expect_dict(self, entries[i], expected_entries[i])
 
-    def test_response_with_expected_status_returns_content(self):
+    async def test_response_with_expected_status_returns_content(self):
         # Checks for mitigations against the effects of
         # <https://bugs.python.org/issue15002> that affect Python 3.4.1+, which
         # manifest as `_download_webpage`, `_download_xml`, `_download_json`,
@@ -1901,7 +1901,7 @@ jwplayer("mediaplayer").setup({"abouttext":"Visit Indie DB","aboutlink":"http:\/
         server_thread.daemon = True
         server_thread.start()
 
-        (content, urlh) = self.ie._download_webpage_handle(
+        (content, urlh) = await self.ie._download_webpage_handle(
             'http://127.0.0.1:%d/teapot' % port, None,
             expected_status=TEAPOT_RESPONSE_STATUS)
         self.assertEqual(content, TEAPOT_RESPONSE_BODY)

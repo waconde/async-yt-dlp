@@ -941,7 +941,7 @@ def parse_options(argv=None):
     })
 
 
-def _real_main(argv=None):
+async def _real_main(argv=None):
     setproctitle('yt-dlp')
 
     parser, opts, all_urls, ydl_opts = parse_options(argv)
@@ -994,7 +994,7 @@ def _real_main(argv=None):
             if opts.load_info_filename is not None:
                 if all_urls:
                     ydl.report_warning('URLs are ignored due to --load-info-json')
-                return ydl.download_with_info_file(expand_path(opts.load_info_filename))
+                return await ydl.download_with_info_file(expand_path(opts.load_info_filename))
             else:
                 return ydl.download(all_urls)
         except DownloadCancelled:
@@ -1002,11 +1002,11 @@ def _real_main(argv=None):
             return 101
 
 
-def main(argv=None):
+async def main(argv=None):
     global _IN_CLI
     _IN_CLI = True
     try:
-        _exit(*variadic(_real_main(argv)))
+        _exit(*variadic(await _real_main(argv)))
     except DownloadError:
         _exit(1)
     except SameFileError as e:

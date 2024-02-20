@@ -2336,7 +2336,7 @@ class GenericIE(InfoExtractor):
             'formats': formats,
         }
 
-    def _real_extract(self, url):
+    async def _real_extract(self, url):
         if url.startswith('//'):
             return self.url_result(self.http_scheme() + url)
 
@@ -2503,7 +2503,7 @@ class GenericIE(InfoExtractor):
                 self.report_detected('DASH manifest')
                 return info_dict
             elif re.match(r'^{http://ns\.adobe\.com/f4m/[12]\.0}manifest$', doc.tag):
-                info_dict['formats'] = self._parse_f4m_formats(doc, url, video_id)
+                info_dict['formats'] = await self._parse_f4m_formats(doc, url, video_id)
                 self.report_detected('F4M manifest')
                 return info_dict
         except xml.etree.ElementTree.ParseError:

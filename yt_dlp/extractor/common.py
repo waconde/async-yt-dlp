@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import collections
 import getpass
@@ -15,7 +16,6 @@ import random
 import re
 import subprocess
 import sys
-import time
 import types
 import urllib.parse
 import urllib.request
@@ -707,7 +707,7 @@ class InfoExtractor:
                 self._downloader.write_debug(
                     f'Using fake IP {self._x_forwarded_for_ip} ({country.upper()}) as X-Forwarded-For')
 
-    def extract(self, url):
+    async def extract(self, url):
         """Extracts URL information and returns it in list of dicts."""
         try:
             for _ in range(2):
@@ -715,7 +715,7 @@ class InfoExtractor:
                     self.initialize()
                     self.to_screen('Extracting URL: %s' % (
                         url if self.get_param('verbose') else truncate_string(url, 100, 20)))
-                    ie_result = self._real_extract(url)
+                    ie_result = await self._real_extract(url)
                     if ie_result is None:
                         return None
                     if self._x_forwarded_for_ip:
@@ -815,7 +815,7 @@ class InfoExtractor:
         url_or_request.update(data=data, headers=headers, query=query)
         return url_or_request
 
-    def _request_webpage(self, url_or_request, video_id, note=None, errnote=None, fatal=True, data=None, headers=None, query=None, expected_status=None):
+    async def _request_webpage(self, url_or_request, video_id, note=None, errnote=None, fatal=True, data=None, headers=None, query=None, expected_status=None):
         """
         Return the response handle.
 
@@ -825,7 +825,7 @@ class InfoExtractor:
             sleep_interval = self.get_param('sleep_interval_requests') or 0
             if sleep_interval > 0:
                 self.to_screen('Sleeping %s seconds ...' % sleep_interval)
-                time.sleep(sleep_interval)
+                await asyncio.sleep(sleep_interval)
         else:
             self._downloader._first_webpage_request = False
 
@@ -865,7 +865,7 @@ class InfoExtractor:
                 self.report_warning(errmsg)
                 return False
 
-    def _download_webpage_handle(self, url_or_request, video_id, note=None, errnote=None, fatal=True,
+    async def _download_webpage_handle(self, url_or_request, video_id, note=None, errnote=None, fatal=True,
                                  encoding=None, data=None, headers={}, query={}, expected_status=None):
         """
         Return a tuple (page content as string, URL handle).
@@ -903,7 +903,7 @@ class InfoExtractor:
         if isinstance(url_or_request, str):
             url_or_request = url_or_request.partition('#')[0]
 
-        urlh = self._request_webpage(url_or_request, video_id, note, errnote, fatal, data=data, headers=headers, query=query, expected_status=expected_status)
+        urlh = await self._request_webpage(url_or_request, video_id, note, errnote, fatal, data=data, headers=headers, query=query, expected_status=expected_status)
         if urlh is False:
             assert not fatal
             return False
@@ -1021,9 +1021,9 @@ class InfoExtractor:
     def _parse_socket_response_as_json(self, data, *args, **kwargs):
         return self._parse_json(data[data.find('{'):data.rfind('}') + 1], *args, **kwargs)
 
-    def __create_download_methods(name, parser, note, errnote, return_value):
+    async def __create_download_methods(name, parser, note, errnote, return_value):
 
-        def parse(ie, content, *args, errnote=errnote, **kwargs):
+        async def parse(ie, content, *args, errnote=errnote, **kwargs):
             if parser is None:
                 return content
             if errnote is False:
@@ -1031,17 +1031,17 @@ class InfoExtractor:
             # parser is fetched by name so subclasses can override it
             return getattr(ie, parser)(content, *args, **kwargs)
 
-        def download_handle(self, url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
+        async def download_handle(self, url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
                             fatal=True, encoding=None, data=None, headers={}, query={}, expected_status=None):
-            res = self._download_webpage_handle(
+            res = await self._download_webpage_handle(
                 url_or_request, video_id, note=note, errnote=errnote, fatal=fatal, encoding=encoding,
                 data=data, headers=headers, query=query, expected_status=expected_status)
             if res is False:
                 return res
             content, urlh = res
-            return parse(self, content, video_id, transform_source=transform_source, fatal=fatal, errnote=errnote), urlh
+            return await parse(self, content, video_id, transform_source=transform_source, fatal=fatal, errnote=errnote), urlh
 
-        def download_content(self, url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
+        async def download_content(self, url_or_request, video_id, note=note, errnote=errnote, transform_source=None,
                              fatal=True, encoding=None, data=None, headers={}, query={}, expected_status=None):
             if self.get_param('load_pages'):
                 url_or_request = self._create_request(url_or_request, data, headers, query)
@@ -1054,7 +1054,7 @@ class InfoExtractor:
                     self.report_warning(f'Unable to load request from disk: {e}')
                 else:
                     content = self.__decode_webpage(webpage_bytes, encoding, url_or_request.headers)
-                    return parse(self, content, video_id, transform_source=transform_source, fatal=fatal, errnote=errnote)
+                    return await parse(self, content, video_id, transform_source=transform_source, fatal=fatal, errnote=errnote)
             kwargs = {
                 'note': note,
                 'errnote': errnote,
@@ -1069,7 +1069,7 @@ class InfoExtractor:
             if parser is None:
                 kwargs.pop('transform_source')
             # The method is fetched by name so subclasses can override _download_..._handle
-            res = getattr(self, download_handle.__name__)(url_or_request, video_id, **kwargs)
+            res = await getattr(self, download_handle.__name__)(url_or_request, video_id, **kwargs)
             return res if res is False else res[0]
 
         def impersonate(func, name, return_value):
@@ -1085,15 +1085,15 @@ class InfoExtractor:
         impersonate(download_content, f'_download_{name}', f'{return_value}')
         return download_handle, download_content
 
-    _download_xml_handle, _download_xml = __create_download_methods(
-        'xml', '_parse_xml', 'Downloading XML', 'Unable to download XML', 'xml as an xml.etree.ElementTree.Element')
-    _download_json_handle, _download_json = __create_download_methods(
-        'json', '_parse_json', 'Downloading JSON metadata', 'Unable to download JSON metadata', 'JSON object as a dict')
-    _download_socket_json_handle, _download_socket_json = __create_download_methods(
-        'socket_json', '_parse_socket_response_as_json', 'Polling socket', 'Unable to poll socket', 'JSON object as a dict')
-    __download_webpage = __create_download_methods('webpage', None, None, None, 'data of the page as a string')[1]
+    _download_xml_handle, _download_xml = asyncio.run(__create_download_methods(
+        'xml', '_parse_xml', 'Downloading XML', 'Unable to download XML', 'xml as an xml.etree.ElementTree.Element'))
+    _download_json_handle, _download_json = asyncio.run(__create_download_methods(
+        'json', '_parse_json', 'Downloading JSON metadata', 'Unable to download JSON metadata', 'JSON object as a dict'))
+    _download_socket_json_handle, _download_socket_json = asyncio.run(__create_download_methods(
+        'socket_json', '_parse_socket_response_as_json', 'Polling socket', 'Unable to poll socket', 'JSON object as a dict'))
+    __download_webpage = asyncio.run(__create_download_methods('webpage', None, None, None, 'data of the page as a string'))[1]
 
-    def _download_webpage(
+    async def _download_webpage(
             self, url_or_request, video_id, note=None, errnote=None,
             fatal=True, tries=1, timeout=NO_DEFAULT, *args, **kwargs):
         """
@@ -1118,12 +1118,12 @@ class InfoExtractor:
         try_count = 0
         while True:
             try:
-                return self.__download_webpage(url_or_request, video_id, note, errnote, None, fatal, *args, **kwargs)
+                return await self.__download_webpage(url_or_request, video_id, note, errnote, None, fatal, *args, **kwargs)
             except IncompleteRead as e:
                 try_count += 1
                 if try_count >= tries:
                     raise e
-                self._sleep(timeout, video_id)
+                await self._sleep(timeout, video_id)
 
     def report_warning(self, msg, video_id=None, *args, only_once=False, **kwargs):
         idstr = format_field(video_id, None, '%s: ')
@@ -1748,13 +1748,11 @@ class InfoExtractor:
         if formats:
             formats[0]['__sort_fields'] = field_preference
 
-    def _check_formats(self, formats, video_id):
+    async def _check_formats(self, formats, video_id):
         if formats:
-            formats[:] = filter(
-                lambda f: self._is_valid_url(
-                    f['url'], video_id,
-                    item='%s video format' % f.get('format_id') if f.get('format_id') else 'video'),
-                formats)
+            for f in formats[::-1]:
+                if not await self._is_valid_url(f['url'], video_id, item='%s video format' % f.get('format_id') if f.get('format_id') else 'video'):
+                    formats.remove(f)
 
     @staticmethod
     def _remove_duplicate_formats(formats):
@@ -1766,13 +1764,13 @@ class InfoExtractor:
                 unique_formats.append(f)
         formats[:] = unique_formats
 
-    def _is_valid_url(self, url, video_id, item='video', headers={}):
+    async def _is_valid_url(self, url, video_id, item='video', headers={}):
         url = self._proto_relative_url(url, scheme='http:')
         # For now assume non HTTP(S) URLs always valid
         if not (url.startswith('http://') or url.startswith('https://')):
             return True
         try:
-            self._request_webpage(url, video_id, 'Checking %s URL' % item, headers=headers)
+            await self._request_webpage(url, video_id, 'Checking %s URL' % item, headers=headers)
             return True
         except ExtractorError as e:
             self.to_screen(
@@ -1792,14 +1790,14 @@ class InfoExtractor:
         assert scheme.endswith(':')
         return sanitize_url(url, scheme=scheme[:-1])
 
-    def _sleep(self, timeout, video_id, msg_template=None):
+    async def _sleep(self, timeout, video_id, msg_template=None):
         if msg_template is None:
             msg_template = '%(video_id)s: Waiting for %(timeout)s seconds'
         msg = msg_template % {'video_id': video_id, 'timeout': timeout}
         self.to_screen(msg)
-        time.sleep(timeout)
+        await asyncio.sleep(timeout)
 
-    def _extract_f4m_formats(self, manifest_url, video_id, preference=None, quality=None, f4m_id=None,
+    async def _extract_f4m_formats(self, manifest_url, video_id, preference=None, quality=None, f4m_id=None,
                              transform_source=lambda s: fix_xml_ampersands(s).strip(),
                              fatal=True, m3u8_id=None, data=None, headers={}, query={}):
         if self.get_param('ignore_no_formats_error'):
@@ -1818,11 +1816,11 @@ class InfoExtractor:
         manifest, urlh = res
         manifest_url = urlh.url
 
-        return self._parse_f4m_formats(
+        return await self._parse_f4m_formats(
             manifest, manifest_url, video_id, preference=preference, quality=quality, f4m_id=f4m_id,
             transform_source=transform_source, fatal=fatal, m3u8_id=m3u8_id)
 
-    def _parse_f4m_formats(self, manifest, manifest_url, video_id, preference=None, quality=None, f4m_id=None,
+    async def _parse_f4m_formats(self, manifest, manifest_url, video_id, preference=None, quality=None, f4m_id=None,
                            transform_source=lambda s: fix_xml_ampersands(s).strip(),
                            fatal=True, m3u8_id=None):
         if not isinstance(manifest, xml.etree.ElementTree.Element) and not fatal:
@@ -1886,7 +1884,7 @@ class InfoExtractor:
                 # bitrate in f4m downloader
                 ext = determine_ext(manifest_url)
                 if ext == 'f4m':
-                    f4m_formats = self._extract_f4m_formats(
+                    f4m_formats = await self._extract_f4m_formats(
                         manifest_url, video_id, preference=preference, quality=quality, f4m_id=f4m_id,
                         transform_source=transform_source, fatal=fatal)
                     # Sometimes stream-level manifest contains single media entry that
@@ -1905,7 +1903,7 @@ class InfoExtractor:
                     formats.extend(f4m_formats)
                     continue
                 elif ext == 'm3u8':
-                    formats.extend(self._extract_m3u8_formats(
+                    formats.extend(await self._extract_m3u8_formats(
                         manifest_url, video_id, 'mp4', preference=preference,
                         quality=quality, m3u8_id=m3u8_id, fatal=fatal))
                     continue
@@ -1942,13 +1940,13 @@ class InfoExtractor:
             'if any subtitle tracks are missing,'
         ), only_once=True)
 
-    def _extract_m3u8_formats(self, *args, **kwargs):
-        fmts, subs = self._extract_m3u8_formats_and_subtitles(*args, **kwargs)
+    async def _extract_m3u8_formats(self, *args, **kwargs):
+        fmts, subs = await self._extract_m3u8_formats_and_subtitles(*args, **kwargs)
         if subs:
             self._report_ignoring_subs('HLS')
         return fmts
 
-    def _extract_m3u8_formats_and_subtitles(
+    async def _extract_m3u8_formats_and_subtitles(
             self, m3u8_url, video_id, ext=None, entry_protocol='m3u8_native',
             preference=None, quality=None, m3u8_id=None, note=None,
             errnote=None, fatal=True, live=False, data=None, headers={},
@@ -1965,7 +1963,7 @@ class InfoExtractor:
                 self.report_warning(f'{errnote}{bug_reports_message()}')
             return [], {}
 
-        res = self._download_webpage_handle(
+        res = await self._download_webpage_handle(
             m3u8_url, video_id,
             note='Downloading m3u8 information' if note is None else note,
             errnote='Failed to download m3u8 information' if errnote is None else errnote,
@@ -1983,7 +1981,7 @@ class InfoExtractor:
             note=note, errnote=errnote, fatal=fatal, live=live, data=data,
             headers=headers, query=query, video_id=video_id)
 
-    def _parse_m3u8_formats_and_subtitles(
+    async def _parse_m3u8_formats_and_subtitles(
             self, m3u8_doc, m3u8_url=None, ext=None, entry_protocol='m3u8_native',
             preference=None, quality=None, m3u8_id=None, live=False, note=None,
             errnote=None, fatal=True, data=None, headers={}, query={},
@@ -1995,11 +1993,11 @@ class InfoExtractor:
             return url if re.match(r'^https?://', url) else urllib.parse.urljoin(m3u8_url, url)
 
         if self.get_param('hls_split_discontinuity', False):
-            def _extract_m3u8_playlist_indices(manifest_url=None, m3u8_doc=None):
+            async def _extract_m3u8_playlist_indices(manifest_url=None, m3u8_doc=None):
                 if not m3u8_doc:
                     if not manifest_url:
                         return []
-                    m3u8_doc = self._download_webpage(
+                    m3u8_doc = await self._download_webpage(
                         manifest_url, video_id, fatal=fatal, data=data, headers=headers,
                         note=False, errnote='Failed to download m3u8 playlist information')
                     if m3u8_doc is False:
@@ -2036,14 +2034,14 @@ class InfoExtractor:
                 'preference': preference,
                 'quality': quality,
                 'has_drm': has_drm,
-            } for idx in _extract_m3u8_playlist_indices(m3u8_doc=m3u8_doc)]
+            } for idx in await _extract_m3u8_playlist_indices(m3u8_doc=m3u8_doc)]
 
             return formats, subtitles
 
         groups = {}
         last_stream_inf = {}
 
-        def extract_media(x_media_line):
+        async def extract_media(x_media_line):
             media = parse_m3u8_attributes(x_media_line)
             # As per [1, 4.3.4.1] TYPE, GROUP-ID and NAME are REQUIRED
             media_type, group_id, name = media.get('TYPE'), media.get('GROUP-ID'), media.get('NAME')
@@ -2089,7 +2087,7 @@ class InfoExtractor:
                     'quality': quality,
                     'has_drm': has_drm,
                     'vcodec': 'none' if media_type == 'AUDIO' else None,
-                } for idx in _extract_m3u8_playlist_indices(manifest_url))
+                } for idx in await _extract_m3u8_playlist_indices(manifest_url))
 
         def build_stream_name():
             # Despite specification does not mention NAME attribute for
@@ -2128,7 +2126,7 @@ class InfoExtractor:
                     or last_stream_inf.get('BANDWIDTH'), scale=1000)
                 manifest_url = format_url(line.strip())
 
-                for idx in _extract_m3u8_playlist_indices(manifest_url):
+                for idx in await _extract_m3u8_playlist_indices(manifest_url):
                     format_id = [m3u8_id, None, idx]
                     # Bandwidth of live streams may differ over time thus making
                     # format_id unpredictable. So it's better to keep provided
@@ -2322,13 +2320,13 @@ class InfoExtractor:
         return self._search_regex(
             r'(?i)^{([^}]+)?}smil$', smil.tag, 'namespace', default=None)
 
-    def _parse_smil_formats(self, *args, **kwargs):
-        fmts, subs = self._parse_smil_formats_and_subtitles(*args, **kwargs)
+    async def _parse_smil_formats(self, *args, **kwargs):
+        fmts, subs = await self._parse_smil_formats_and_subtitles(*args, **kwargs)
         if subs:
             self._report_ignoring_subs('SMIL')
         return fmts
 
-    def _parse_smil_formats_and_subtitles(
+    async def _parse_smil_formats_and_subtitles(
             self, smil, smil_url, video_id, namespace=None, f4m_params=None, transform_rtmp_url=None):
         base = smil_url
         for meta in smil.findall(self._xpath_ns('./head/meta', namespace)):
@@ -2419,7 +2417,7 @@ class InfoExtractor:
                     src_url, video_id, ism_id='mss', fatal=False)
                 formats.extend(ism_formats)
                 self._merge_subtitles(ism_subs, target=subtitles)
-            elif src_url.startswith('http') and self._is_valid_url(src, video_id):
+            elif src_url.startswith('http') and await self._is_valid_url(src, video_id):
                 http_count += 1
                 formats.append({
                     'url': src_url,

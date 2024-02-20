@@ -14,4 +14,5 @@ if __package__ is None and not getattr(sys, 'frozen', False):
 import yt_dlp
 
 if __name__ == '__main__':
-    yt_dlp.main()
+    import asyncio
+    asyncio.run(yt_dlp.main())
