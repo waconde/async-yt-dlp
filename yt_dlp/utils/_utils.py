@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import binascii
 import calendar
@@ -5062,7 +5063,7 @@ class RetryManager:
         delay = float_or_none(sleep_func(n=count - 1)) if callable(sleep_func) else sleep_func
         if delay:
             info(f'Sleeping {delay:.2f} seconds ...')
-            time.sleep(delay)
+            asyncio.sleep(delay)
 
 
 def make_archive_id(ie, video_id):

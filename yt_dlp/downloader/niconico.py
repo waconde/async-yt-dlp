@@ -1,3 +1,4 @@
+import asyncio
 import json
 import threading
 import time
@@ -129,7 +130,7 @@ class NiconicoLiveFD(FileDownloader):
                         return
                 except BaseException as e:
                     self.to_screen('[%s] %s: Connection error occured, reconnecting after 10 seconds: %s' % ('niconico:live', video_id, str_or_none(e)))
-                    time.sleep(10)
+                    asyncio.sleep(10)
                     continue
                 finally:
                     reconnect = True

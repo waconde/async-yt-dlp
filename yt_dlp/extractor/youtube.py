@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import calendar
 import collections
@@ -2930,7 +2931,7 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
                 # fragment count no longer increase since it starts
                 break
 
-            time.sleep(max(0, FETCH_SPAN + fetch_time - time.time()))
+            asyncio.sleep(max(0, FETCH_SPAN + fetch_time - time.time()))
 
     def _extract_player_url(self, *ytcfgs, webpage=None):
         player_url = traverse_obj(

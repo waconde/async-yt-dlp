@@ -1,3 +1,5 @@
+import asyncio
+
 import enum
 import json
 import os
@@ -395,7 +397,7 @@ class Aria2cFD(ExternalFD):
         with Popen(cmd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE) as p:
             # Add a small sleep so that RPC client can receive response,
             # or the connection stalls infinitely
-            time.sleep(0.2)
+            asyncio.sleep(0.2)
             retval = p.poll()
             while retval is None:
                 # We don't use tellStatus as we won't know the GID without reading stdout
@@ -425,7 +427,7 @@ class Aria2cFD(ExternalFD):
                     retval = p.wait()
                     break
 
-                time.sleep(0.1)
+                asyncio.sleep(0.1)
                 retval = p.poll()
 
             return '', p.stderr.read(), retval

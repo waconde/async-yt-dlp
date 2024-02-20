@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 
@@ -102,7 +103,7 @@ class YoutubeLiveChatFD(FragmentFD):
                 click_tracking_params = continuation_data.get('clickTrackingParams')
                 timeout_ms = int_or_none(continuation_data.get('timeoutMs'))
                 if timeout_ms is not None:
-                    time.sleep(timeout_ms / 1000)
+                    asyncio.sleep(timeout_ms / 1000)
             self._append_fragment(ctx, processed_fragment)
             return continuation_id, live_offset, click_tracking_params
 

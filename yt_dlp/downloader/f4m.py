@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import itertools
@@ -281,7 +282,7 @@ class F4mFD(FragmentFD):
             fragments_list = [f for f in fragments_list if f[1] > latest_fragment]
             if not fragments_list:
                 # Retry after a while
-                time.sleep(5.0)
+                asyncio.sleep(5.0)
                 retries -= 1
 
         if not fragments_list:

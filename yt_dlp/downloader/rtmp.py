@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import subprocess
@@ -181,7 +182,7 @@ class RtmpFD(FileDownloader):
         while retval in (RD_INCOMPLETE, RD_FAILED) and not test and not live:
             prevsize = os.path.getsize(encodeFilename(tmpfilename))
             self.to_screen('[rtmpdump] Downloaded %s bytes' % prevsize)
-            time.sleep(5.0)  # This seems to be needed
+            asyncio.sleep(5.0)  # This seems to be needed
             args = basic_args + ['--resume']
             if retval == RD_FAILED:
                 args += ['--skip', '1']

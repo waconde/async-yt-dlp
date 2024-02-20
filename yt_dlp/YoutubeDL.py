@@ -1648,7 +1648,7 @@ class YoutubeDL:
                     progress('')
                     raise ReExtractInfo('[wait] Wait period ended', expected=True)
                 progress(f'[wait] Remaining time until next attempt: {self._format_screen(format_dur(diff), self.Styles.EMPHASIS)}')
-                time.sleep(1)
+                asyncio.sleep(1)
         except KeyboardInterrupt:
             progress('')
             raise ReExtractInfo('[wait] Interrupted by user', expected=True)

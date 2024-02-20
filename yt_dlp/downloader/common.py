@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import errno
 import functools
@@ -209,7 +210,7 @@ class FileDownloader:
         if speed > rate_limit:
             sleep_time = float(byte_counter) / rate_limit - elapsed
             if sleep_time > 0:
-                time.sleep(sleep_time)
+                asyncio.sleep(sleep_time)
 
     def temp_name(self, filename):
         """Returns a temporary filename for the given filename."""
@@ -230,7 +231,7 @@ class FileDownloader:
         def error_callback(err, count, retries, *, fd):
             return RetryManager.report_retry(
                 err, count, retries, info=fd.__to_screen,
-                warn=lambda e: (time.sleep(0.01), fd.to_screen(f'[download] Unable to {action} file: {e}')),
+                warn=lambda e: (asyncio.sleep(0.01), fd.to_screen(f'[download] Unable to {action} file: {e}')),
                 error=None if fatal else lambda e: fd.report_error(f'Unable to {action} file: {e}'),
                 sleep_func=fd.params.get('retry_sleep_functions', {}).get('file_access'))
 
@@ -450,7 +451,7 @@ class FileDownloader:
                 min_sleep_interval, self.params.get('max_sleep_interval') or min_sleep_interval)
         if sleep_interval > 0:
             self.to_screen(f'[download] Sleeping {sleep_interval:.2f} seconds ...')
-            time.sleep(sleep_interval)
+            asyncio.sleep(sleep_interval)
 
         ret = self.real_download(filename, info_dict)
         self._finish_multiline_status()
