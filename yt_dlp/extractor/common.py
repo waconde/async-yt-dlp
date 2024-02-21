@@ -568,16 +568,17 @@ class InfoExtractor:
         self._printed_messages = set()
         self.set_downloader(downloader)
 
-        self._download_xml_handle, self._download_xml = asyncio.run(self.__create_download_methods(
+        self._download_xml_handle, self._download_xml = self.__create_download_methods(
             'xml', '_parse_xml', 'Downloading XML', 'Unable to download XML',
-            'xml as an xml.etree.ElementTree.Element'))
-        self._download_json_handle, self._download_json = asyncio.run(self.__create_download_methods(
+            'xml as an xml.etree.ElementTree.Element')
+        self._download_json_handle, self._download_json = self.__create_download_methods(
             'json', '_parse_json', 'Downloading JSON metadata', 'Unable to download JSON metadata',
-            'JSON object as a dict'))
-        self._download_socket_json_handle, self._download_socket_json = asyncio.run(self.__create_download_methods(
+            'JSON object as a dict')
+        self._download_socket_json_handle, self._download_socket_json = self.__create_download_methods(
             'socket_json', '_parse_socket_response_as_json', 'Polling socket', 'Unable to poll socket',
-            'JSON object as a dict'))
-        self.__download_webpage = asyncio.run(self.__create_download_methods('webpage', None, None, None, 'data of the page as a string'))[1]
+            'JSON object as a dict')
+        self.__download_webpage = self.__create_download_methods(
+            'webpage', None, None, None, 'data of the page as a string')[1]
 
     @classmethod
     def _match_valid_url(cls, url):
@@ -1032,7 +1033,7 @@ class InfoExtractor:
     def _parse_socket_response_as_json(self, data, *args, **kwargs):
         return self._parse_json(data[data.find('{'):data.rfind('}') + 1], *args, **kwargs)
 
-    async def __create_download_methods(self, name, parser, note, errnote, return_value):
+    def __create_download_methods(self, name, parser, note, errnote, return_value):
 
         async def parse(ie, content, *args, errnote=errnote, **kwargs):
             if parser is None:

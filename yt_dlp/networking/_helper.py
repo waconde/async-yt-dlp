@@ -183,15 +183,15 @@ class InstanceStoreMixin:
         self.__instances.append((kwargs, instance))
         return instance
 
-    def _close_instance(self, instance):
+    async def _close_instance(self, instance):
         if callable(getattr(instance, 'close', None)):
             close_result = instance.close()
             if isinstance(close_result, typing.Coroutine):
-                asyncio.run(close_result)
+                await close_result
 
-    def _clear_instances(self):
+    async def _clear_instances(self):
         for _, instance in self.__instances:
-            self._close_instance(instance)
+            await self._close_instance(instance)
         self.__instances.clear()
 
 

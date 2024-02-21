@@ -756,7 +756,7 @@ class YoutubeDL:
         self.format_selector = (
             self.params.get('format') if self.params.get('format') in (None, '-')
             else self.params['format'] if callable(self.params['format'])
-            else asyncio.run(self.build_format_selector(self.params['format'])))
+            else self.build_format_selector(self.params['format']))
 
         hooks = {
             'post_hooks': self.add_post_hook,

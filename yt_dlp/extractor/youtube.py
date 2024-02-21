@@ -3059,11 +3059,11 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
         initial_function = jsi.extract_function(funcname)
         return lambda s: initial_function([s])
 
-    def _cached(self, func, *cache_id):
-        def inner(*args, **kwargs):
+    async def _cached(self, func, *cache_id):
+        async def inner(*args, **kwargs):
             if cache_id not in self._player_cache:
                 try:
-                    self._player_cache[cache_id] = func(*args, **kwargs)
+                    self._player_cache[cache_id] = await func(*args, **kwargs)
                 except ExtractorError as e:
                     self._player_cache[cache_id] = e
                 except Exception as e:
@@ -3077,8 +3077,8 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
 
     async def _decrypt_signature(self, s, video_id, player_url):
         """Turn the encrypted s field into a working signature"""
-        extract_sig = self._cached(self._extract_signature_function, 'sig', player_url, self._signature_cache_id(s))
-        func = extract_sig(video_id, player_url, s)
+        extract_sig = await self._cached(self._extract_signature_function, 'sig', player_url, self._signature_cache_id(s))
+        func = await extract_sig(video_id, player_url, s)
         self._print_sig_code(func, s)
         return func(s)
 
@@ -3096,8 +3096,9 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
             self.to_screen(f'Extracted nsig function from {player_id}:\n{func_code[1]}\n')
 
         try:
-            extract_nsig = self._cached(self._extract_n_function_from_code, 'nsig func', player_url)
-            ret = extract_nsig(jsi, func_code)(s)
+            extract_nsig = await self._cached(self._extract_n_function_from_code, 'nsig func', player_url)
+            func = await extract_nsig(jsi, func_code)
+            ret = func(s)
         except JSInterpreter.Exception as e:
             try:
                 jsi = PhantomJSwrapper(self, timeout=5000)
@@ -3153,10 +3154,10 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
         self.cache.store('youtube-nsig', player_id, func_code)
         return jsi, player_id, func_code
 
-    def _extract_n_function_from_code(self, jsi, func_code):
+    async def _extract_n_function_from_code(self, jsi, func_code):
         func = jsi.extract_function_from_code(*func_code)
 
-        def extract_nsig(s):
+        async def extract_nsig(s):
             try:
                 ret = func([s])
             except JSInterpreter.Exception:
@@ -3815,9 +3816,9 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
             throttled = False
             if query.get('n'):
                 try:
-                    decrypt_nsig = self._cached(self._decrypt_nsig, 'nsig', query['n'][0])
+                    decrypt_nsig = await self._cached(self._decrypt_nsig, 'nsig', query['n'][0])
                     fmt_url = update_url_query(fmt_url, {
-                        'n': decrypt_nsig(query['n'][0], video_id, player_url)
+                        'n': await decrypt_nsig(query['n'][0], video_id, player_url)
                     })
                 except ExtractorError as e:
                     phantomjs_hint = ''
