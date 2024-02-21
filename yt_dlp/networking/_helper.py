@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import functools
 import socket
@@ -170,21 +171,23 @@ class InstanceStoreMixin:
         super().__init__(**kwargs)  # So that both MRO works
 
     @staticmethod
-    def _create_instance(**kwargs):
+    async def _create_instance(**kwargs):
         raise NotImplementedError
 
-    def _get_instance(self, **kwargs):
+    async def _get_instance(self, **kwargs):
         for key, instance in self.__instances:
             if key == kwargs:
                 return instance
 
-        instance = self._create_instance(**kwargs)
+        instance = await self._create_instance(**kwargs)
         self.__instances.append((kwargs, instance))
         return instance
 
     def _close_instance(self, instance):
         if callable(getattr(instance, 'close', None)):
-            instance.close()
+            close_result = instance.close()
+            if isinstance(close_result, typing.Coroutine):
+                asyncio.run(close_result)
 
     def _clear_instances(self):
         for _, instance in self.__instances:

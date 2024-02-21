@@ -858,7 +858,7 @@ class InfoExtractor:
             headers.setdefault('X-Forwarded-For', self._x_forwarded_for_ip)
 
         try:
-            return self._downloader.urlopen(self._create_request(url_or_request, data, headers, query))
+            return await self._downloader.urlopen(self._create_request(url_or_request, data, headers, query))
         except network_exceptions as err:
             if isinstance(err, HTTPError):
                 if self.__can_accept_status_code(err, expected_status):

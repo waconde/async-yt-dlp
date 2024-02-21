@@ -22,6 +22,8 @@ import tempfile
 import time
 import tokenize
 import traceback
+from typing import Coroutine, AsyncGenerator
+
 import unicodedata
 
 from .cache import Cache
@@ -1799,7 +1801,7 @@ class YoutubeDL:
 
         if result_type == 'video':
             self.add_extra_info(ie_result, extra_info)
-            ie_result = self.process_video_result(ie_result, download=download)
+            ie_result = await self.process_video_result(ie_result, download=download)
             self._raise_pending_errors(ie_result)
             additional_urls = (ie_result or {}).get('additional_urls')
             if additional_urls:
@@ -1867,9 +1869,9 @@ class YoutubeDL:
             self._playlist_level += 1
             self._playlist_urls.add(webpage_url)
             self._fill_common_fields(ie_result, False)
-            self._sanitize_thumbnails(ie_result)
+            await self._sanitize_thumbnails(ie_result)
             try:
-                return self.__process_playlist(ie_result, download)
+                return await self.__process_playlist(ie_result, download)
             finally:
                 self._playlist_level -= 1
                 if not self._playlist_level:
@@ -1926,7 +1928,7 @@ class YoutubeDL:
             'extractor_key': ie_result['extractor_key'],
         }
 
-    def __process_playlist(self, ie_result, download):
+    async def __process_playlist(self, ie_result, download):
         """Process each entry in the playlist"""
         assert ie_result['_type'] in ('playlist', 'multi_video')
 
@@ -1967,7 +1969,7 @@ class YoutubeDL:
                                        self.prepare_filename(ie_copy, 'pl_description')) is None:
                 return
             # TODO: This should be passed to ThumbnailsConvertor if necessary
-            self._write_thumbnails('playlist', ie_result, self.prepare_filename(ie_copy, 'pl_thumbnail'))
+            await self._write_thumbnails('playlist', ie_result, self.prepare_filename(ie_copy, 'pl_thumbnail'))
 
         if lazy:
             if self.params.get('playlistreverse') or self.params.get('playlistrandom'):
@@ -2384,9 +2386,7 @@ class YoutubeDL:
 
                 async def selector_function(ctx):
                     for f in fs:
-                        picked_formats = []
-                        async for result in f(ctx):
-                            picked_formats.append(result)
+                        picked_formats = [result async for result in f(ctx)]
                         if picked_formats:
                             return picked_formats
                     return []
@@ -2408,9 +2408,7 @@ class YoutubeDL:
                             yield f
                 elif format_spec == 'mergeall':
                     async def selector_function(ctx):
-                        formats = []
-                        async for f in _check_formats(f for f in ctx['formats'] if f.get('vcodec') != 'none' or f.get('acodec') != 'none'):
-                            formats.append(f)
+                        formats = [f async for f in _check_formats(f for f in ctx['formats'] if f.get('vcodec') != 'none' or f.get('acodec') != 'none')]
                         if not formats:
                             return
                         merged_format = formats[-1]
@@ -2563,7 +2561,7 @@ class YoutubeDL:
             t.get('id') if t.get('id') is not None else '',
             t.get('url')))
 
-    def _sanitize_thumbnails(self, info_dict):
+    async def _sanitize_thumbnails(self, info_dict):
         thumbnails = info_dict.get('thumbnails')
         if thumbnails is None:
             thumbnail = info_dict.get('thumbnail')
@@ -2572,11 +2570,11 @@ class YoutubeDL:
         if not thumbnails:
             return
 
-        def check_thumbnails(thumbnails):
+        async def check_thumbnails(thumbnails):
             for t in thumbnails:
                 self.to_screen(f'[info] Testing thumbnail {t["id"]}')
                 try:
-                    self.urlopen(HEADRequest(t['url']))
+                    await self.urlopen(HEADRequest(t['url']))
                 except network_exceptions as err:
                     self.to_screen(f'[info] Unable to connect to thumbnail {t["id"]} URL {t["url"]!r} - {err}. Skipping...')
                     continue
@@ -2591,7 +2589,7 @@ class YoutubeDL:
             t['url'] = sanitize_url(t['url'])
 
         if self.params.get('check_formats') is True:
-            info_dict['thumbnails'] = LazyList(check_thumbnails(thumbnails[::-1]), reverse=True)
+            info_dict['thumbnails'] = LazyList([i async for i in check_thumbnails(thumbnails[::-1])], reverse=True)
         else:
             info_dict['thumbnails'] = thumbnails
 
@@ -2659,7 +2657,7 @@ class YoutubeDL:
         formats.sort(key=FormatSorter(
             self, info_dict.get('_format_sort_fields') or []).calculate_preference)
 
-    def process_video_result(self, info_dict, download=True):
+    async def process_video_result(self, info_dict, download=True):
         assert info_dict.get('_type', 'video') == 'video'
         self._num_videos += 1
 
@@ -2714,7 +2712,7 @@ class YoutubeDL:
             info_dict['playlist'] = None
             info_dict['playlist_index'] = None
 
-        self._sanitize_thumbnails(info_dict)
+        await self._sanitize_thumbnails(info_dict)
 
         thumbnail = info_dict.get('thumbnail')
         thumbnails = info_dict.get('thumbnails')
@@ -2896,7 +2894,7 @@ class YoutubeDL:
                                    + '(Press ENTER for default, or Ctrl+C to quit)'
                                    + self._format_screen(': ', self.Styles.EMPHASIS))
                 try:
-                    format_selector = self.build_format_selector(req_format) if req_format else None
+                    format_selector = await self.build_format_selector(req_format) if req_format else None
                 except SyntaxError as err:
                     self.report_error(err, tb=False, is_error=False)
                     continue
@@ -2904,14 +2902,20 @@ class YoutubeDL:
             if format_selector is None:
                 req_format = self._default_format_spec(info_dict, download=download)
                 self.write_debug(f'Default format spec: {req_format}')
-                format_selector = self.build_format_selector(req_format)
+                format_selector = await self.build_format_selector(req_format)
 
-            formats_to_download = list(format_selector({
+            format_result = format_selector({
                 'formats': formats,
                 'has_merged_format': any('none' not in (f.get('acodec'), f.get('vcodec')) for f in formats),
                 'incomplete_formats': (all(f.get('vcodec') == 'none' for f in formats)  # No formats with video
                                        or all(f.get('acodec') == 'none' for f in formats)),  # OR, No formats with audio
-            }))
+            })
+            if isinstance(format_result, Coroutine):
+                formats_to_download = list(await format_result)
+            elif isinstance(format_result, AsyncGenerator):
+                formats_to_download = [f async for f in format_result]
+            else:
+                formats_to_download = list(format_result)
             if interactive_format_selection and not formats_to_download:
                 self.report_error('Requested format is not available', tb=False, is_error=False)
                 continue
@@ -2957,7 +2961,7 @@ class YoutubeDL:
                     })
                 downloaded_formats.append(new_info)
                 try:
-                    self.process_info(new_info)
+                    await self.process_info(new_info)
                 except MaxDownloadsReached:
                     max_downloads_reached = True
                 self._raise_pending_errors(new_info)
@@ -3156,7 +3160,7 @@ class YoutubeDL:
             os.remove(file)
         return None
 
-    def process_info(self, info_dict):
+    async def process_info(self, info_dict):
         """Process a single resolved IE result. (Modifies it in-place)"""
 
         assert info_dict.get('_type', 'video') == 'video'
@@ -3216,7 +3220,7 @@ class YoutubeDL:
             return
         files_to_move.update(dict(sub_files))
 
-        thumb_files = self._write_thumbnails(
+        thumb_files = await self._write_thumbnails(
             'video', info_dict, temp_filename, self.prepare_filename(info_dict, 'thumbnail'))
         if thumb_files is None:
             return
@@ -4025,10 +4029,10 @@ class YoutubeDL:
 
         # Not implemented
         if False and self.params.get('call_home'):
-            ipaddr = self.urlopen('https://yt-dl.org/ip').read().decode()
+            ipaddr = asyncio.run(self.urlopen('https://yt-dl.org/ip')).read().decode()
             write_debug('Public IP address: %s' % ipaddr)
-            latest_version = self.urlopen(
-                'https://yt-dl.org/latest/version').read().decode()
+            latest_version = asyncio.run(self.urlopen(
+                'https://yt-dl.org/latest/version')).read().decode()
             if version_tuple(latest_version) > version_tuple(__version__):
                 self.report_warning(
                     'You are using an outdated version (newest version: %s)! '
@@ -4066,7 +4070,7 @@ class YoutubeDL:
         handler = self._request_director.handlers['Urllib']
         return handler._get_instance(cookiejar=self.cookiejar, proxies=self.proxies)
 
-    def urlopen(self, req):
+    async def urlopen(self, req):
         """ Start an HTTP download """
         if isinstance(req, str):
             req = Request(req)
@@ -4087,7 +4091,7 @@ class YoutubeDL:
         clean_headers(req.headers)
 
         try:
-            return self._request_director.send(req)
+            return await self._request_director.send(req)
         except NoSupportingHandlers as e:
             for ue in e.unsupported_errors:
                 # FIXME: This depends on the order of errors.
@@ -4272,7 +4276,7 @@ class YoutubeDL:
                 self.report_warning(msg)
         return ret
 
-    def _write_thumbnails(self, label, info_dict, filename, thumb_filename_base=None):
+    async def _write_thumbnails(self, label, info_dict, filename, thumb_filename_base=None):
         ''' Write thumbnails to file and return list of (thumb_filename, final_thumb_filename); or None if error '''
         write_all = self.params.get('write_all_thumbnails', False)
         thumbnails, ret = [], []
@@ -4307,7 +4311,7 @@ class YoutubeDL:
             else:
                 self.to_screen(f'[info] Downloading {thumb_display_id} ...')
                 try:
-                    uf = self.urlopen(Request(t['url'], headers=t.get('http_headers', {})))
+                    uf = await self.urlopen(Request(t['url'], headers=t.get('http_headers', {})))
                     self.to_screen(f'[info] Writing {thumb_display_id} to: {thumb_filename}')
                     with open(encodeFilename(thumb_filename), 'wb') as thumbf:
                         shutil.copyfileobj(uf, thumbf)

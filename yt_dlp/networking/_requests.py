@@ -42,8 +42,7 @@ from .common import (
     Features,
     RequestHandler,
     Response,
-    register_preference,
-    register_rh,
+    register_preference
 )
 from .exceptions import (
     CertificateVerifyError,
@@ -241,7 +240,6 @@ class Urllib3LoggingHandler(logging.Handler):
             self.handleError(record)
 
 
-@register_rh
 class RequestsRH(RequestHandler, InstanceStoreMixin):
 
     """Requests RequestHandler

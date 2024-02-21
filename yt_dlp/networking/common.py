@@ -88,7 +88,7 @@ class RequestDirector:
         if self.verbose:
             self.logger.stdout(f'director: {msg}')
 
-    def send(self, request: Request) -> Response:
+    async def send(self, request: Request) -> Response:
         """
         Passes a request onto a suitable RequestHandler
         """
@@ -111,7 +111,7 @@ class RequestDirector:
 
             self._print_verbose(f'Sending request via "{handler.RH_NAME}"')
             try:
-                response = handler.send(request)
+                response = await handler.send(request)
             except RequestError:
                 raise
             except Exception as e:
@@ -319,13 +319,13 @@ class RequestHandler(abc.ABC):
         self._validate(request)
 
     @wrap_request_errors
-    def send(self, request: Request) -> Response:
+    async def send(self, request: Request) -> Response:
         if not isinstance(request, Request):
             raise TypeError('Expected an instance of Request')
-        return self._send(request)
+        return await self._send(request)
 
     @abc.abstractmethod
-    def _send(self, request: Request):
+    async def _send(self, request: Request):
         """Handle a request from start to finish. Redefine in subclasses."""
         pass
 
@@ -558,7 +558,7 @@ class Response(io.IOBase):
 
 
 if typing.TYPE_CHECKING:
-    RequestData = bytes | Iterable[bytes] | typing.IO | None
+    RequestData = typing.Union[bytes, Iterable[bytes], typing.IO, None]
     Preference = typing.Callable[[RequestHandler, Request], int]
 
 _RH_PREFERENCES: set[Preference] = set()
